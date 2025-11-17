@@ -247,17 +247,36 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 %apagar esta linha - apenas para demonstracao aleatoria
 %executa_acao(X) :- L=['virar_esquerda','virar_direita','andar','pegar'],random_between(1,4,I), nth1(I, L, X),!.
 
-%apagar linhas abaixo... sao exemplos de resposta
+%Exemplos de resposta (manter para ter uma base inicial)
 %executa_acao(andar) :- posicao(PX, _, oeste), PX > 1, X = andar,!.
 %executa_acao(andar) :- posicao(PX, _, leste), PX < 3, X = andar,!.
 %executa_acao(pegar) :- posicao(PX, PY,_), tem_ouro(PX, PY), !.
 %executa_acao(voltar) :- peguei_todos_ouros,!.
 
+%Acao pegar
 executa_acao(pegar) :- posicao(PX, PY, _), tem_ouro(PX, PY), !.
 executa_acao(pegar) :- posicao(PX, PY, _), tem_pocao(PX, PY), energia(E) <= 50, !.
 
+%Acao virar_esquerda
 
+executa_acao(virar_esquerda) :- posicao(PX, PY, norte), !.
+executa_acao(virar_esquerda) :- posicao(PX, PY, leste), !.
+executa_acao(virar_esquerda) :- posicao(PX, PY, sul), !.
+executa_acao(virar_esquerda) :- posicao(PX, PY, oeste), !.
 
+%Acao virar_direita
+
+executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
+executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
+executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
+executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
+
+%Acao andar
+
+executa_acao(andar) :- posicao(_, PY, norte), X = andar, !.
+executa_acao(andar) :- posicao(_, PY, sul), X = andar, !.
+executa_acao(andar) :- posicao(PX, _, oeste),  X = andar, !.
+executa_acao(andar) :- posicao(PX, _, leste), X = andar, !.
 
 
 
