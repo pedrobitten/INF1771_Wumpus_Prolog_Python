@@ -254,29 +254,89 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 %executa_acao(voltar) :- peguei_todos_ouros,!.
 
 %Acao pegar
-executa_acao(pegar) :- posicao(PX, PY, _), tem_ouro(PX, PY), !.
-executa_acao(pegar) :- posicao(PX, PY, _), tem_pocao(PX, PY), energia(E) <= 50, !.
-
-%Acao virar_esquerda
-
-executa_acao(virar_esquerda) :- posicao(PX, PY, norte), !.
-executa_acao(virar_esquerda) :- posicao(PX, PY, leste), !.
-executa_acao(virar_esquerda) :- posicao(PX, PY, sul), !.
-executa_acao(virar_esquerda) :- posicao(PX, PY, oeste), !.
+executa_acao(pegar) :- posicao(PX, PY, _), tile(PX, PY, 'O'), !.
+executa_acao(pegar) :- posicao(PX, PY, _), tile(PX, PY, 'U'), energia(E), E <= 50 !.
 
 %Acao virar_direita
 
-executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
-executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
-executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
-executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
+%executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
+%executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
+%executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
+%executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
+
+%Seguro
+
+seguro(X,Y) :- memory(X,Y,L), member(brisa, L), member(passos, L), member(palmas, L), !.
+seguro(X,Y) :- certeza(X,Y), memory(X,Y,[])!.
+seguro(X,Y) :- memory(X,Y,L), member(brisa, L), member(passos, L), !.
+seguro(X,Y) :- memory(X,Y,L), member(brisa, L), member(palmas, L), !.
+seguro(X,Y) :- memory(X,Y,L), member(palmas, L), member(passos, L), !.
+
+%Desconhecido
+
+desconhecido(X,Y) :- certeza(X,Y) , visitada(X,Y)
 
 %Acao andar
 
-executa_acao(andar) :- posicao(_, PY, norte), X = andar, !.
-executa_acao(andar) :- posicao(_, PY, sul), X = andar, !.
-executa_acao(andar) :- posicao(PX, _, oeste),  X = andar, !.
-executa_acao(andar) :- posicao(PX, _, leste), X = andar, !.
+executa_acao(andar) :- 
+	posicao(_, Y, norte),  
+	YY is Y + 1, 
+	seguro(_, YY), !.
+
+executa_acao(andar) :- 
+	posicao(_, Y, sul),  
+	YY is Y - 1, 
+	seguro(_, YY), !.
+
+executa_acao(andar) :- 
+	posicao(X, _, leste),  
+	XX is X + 1, 
+	seguro(XX, _), !.
+
+executa_acao(andar) :- 
+	posicao(X, _, oeste),  
+	XX is X - 1, 
+	seguro(XX, _), !.
+
+executa_acao(andar) :- 
+	posicao(_, Y, norte),  
+	YY is Y + 1, 
+	desconhecido(_, YY), !.
+
+executa_acao(andar) :- 
+	posicao(_, Y, sul),  
+	YY is Y - 1, 
+	desconhecido(_, YY), !.
+
+executa_acao(andar) :- 
+	posicao(X, _, leste),  
+	XX is X + 1, 
+	desconhecido(XX, _), !.
+
+executa_acao(andar) :- 
+	posicao(X, _, oeste),  
+	XX is X - 1, 
+	desconhecido(XX, _), !.
+
+%Acao virar_esquerda
+
+%Viro a esquerda quando:
+%No leste tem um obstaculo
+%No oeste tem um obstaculo
+%No norte tem um obstaculo
+%No sul tem um obstaculo
+%Quando tem uma parede na minha frente
+
+executa_acao(virar_esquerda) :- 
+	posicao(X, _, leste),
+	XX is X + 1 
+	certeza(XX,_), !.
+
+%executa_acao(virar_esquerda) :- posicao(PX, PY, leste), !.
+%executa_acao(virar_esquerda) :- posicao(PX, PY, sul), !.
+%executa_acao(virar_esquerda) :- posicao(PX, PY, oeste), !.
+
+
 
 
 
