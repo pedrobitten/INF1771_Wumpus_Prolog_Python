@@ -276,6 +276,11 @@ seguro(X,Y) :- memory(X,Y,L), member(palmas, L), member(passos, L), !.
 
 desconhecido(X,Y) :- certeza(X,Y) , visitada(X,Y)
 
+%Acao pegar (maior prioridade)
+
+executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'O'), !.
+executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'U'), !.
+
 %Acao andar
 
 executa_acao(andar) :- 
