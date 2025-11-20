@@ -253,72 +253,140 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 %executa_acao(pegar) :- posicao(PX, PY,_), tem_ouro(PX, PY), !.
 %executa_acao(voltar) :- peguei_todos_ouros,!.
 
+%Se já visitei, e sobrevivi, é seguro.
+seguro(X,Y) :- visitado(X,Y), !.
+
+% Se tenho certeza sobre ela E a memória não registra perigos mortais/teletransportes.
+seguro(X,Y) :- certeza(X,Y), memory(X, Y, L),
+				\+ member(brisa, L),    % não é poço
+    			\+ member(palmas, L),   % não é teletransporte
+			    % Se você não implementou um mecanismo de ataque, é mais seguro evitar 'passos' também.
+    			\+ member(passos, L),   % NÃO é Monstro (Risco de dano)
+    			!.
+
 %Acao pegar
 executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(brilho, L), !.
 executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(reflexo, L), energia(E), E <= 50, !.
 
-%Acao virar_direita
+% Acao andar para novo e seguro
+executa_acao(andar) :- posicao(PX, PY, norte), map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1, seguro(NX, NY), \+ visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, sul), PY > 1, NX is PX, NY is PY - 1, seguro(NX, NY), \+ visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, leste), map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, oeste), PX > 1, NX is PX - 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
 
-%executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
-%executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
-%executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
-%executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
+% Acao virar_direita (3a Prioridade A: ROTAÇÃO UNIVERSAL - Anti-Loop)
+executa_acao(virar_direita) :- 
+    posicao(PX, PY, Dir),
+    % Simula a próxima coordenada (NX, NY)
+    (
+        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1)
+        ; (Dir = sul, PY > 1, NX is PX, NY is PY - 1)
+        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY)
+        ; (Dir = oeste, PX > 1, NX is PX - 1, NY is PY)
+    ), 
+    (
+        % Causa 1: INSEGURO
+        \+ seguro(NX, NY)
+        ;
+        % Causa 2: SEGURO, MAS VISITADO (FORÇA ROTAÇÃO para procurar novo caminho)
+        (seguro(NX, NY), visitado(NX, NY))
+    ),
+    !.
 
-%Seguro
+% Acao virar_direita (3a Prioridade B: Reorientação - Parede)
+executa_acao(virar_direita) :- 
+    posicao(PX, PY, Dir),
+    % Causa 3: PAREDE (Simulação de movimento falha)
+    \+ (
+        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, _NX is PX, _NY is PY + 1)
+        ; (Dir = sul, PY > 1, _NX is PX, _NY is PY - 1)
+        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, _NX is PX + 1, _NY is PY)
+        ; (Dir = oeste, PX > 1, _NX is PX - 1, _NY is PY)
+    ),
+    !.
 
-seguro(X,Y) :- visitado(X,Y), !.
-seguro(X,Y) :- 
-	\+ memory(X, Y, [brisa]),
-	\+ memory(X, Y, [palmas]), 
-	\+ memory(X, Y, [passos]), !.
+% Acao andar para VISITADO E SEGURO (4a Prioridade: Backtracking)
+executa_acao(andar) :- posicao(PX, PY, norte), map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1, seguro(NX, NY), visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, sul), PY > 1, NX is PX, NY is PY - 1, seguro(NX, NY), visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, leste), map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY, seguro(NX, NY), visitado(NX, NY), !.
+executa_acao(andar) :- posicao(PX, PY, oeste), PX > 1, NX is PX - 1, NY is PY, seguro(NX, NY), visitado(NX, NY), !.
+
+% Acao andar para DESCONHECIDO (5a Prioridade: Exploração Arriscada)
+executa_acao(andar) :- 
+    posicao(PX, PY, Dir),
+    (
+        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1)
+        ; (Dir = sul, PY > 1, NX is PX, NY is PY - 1)
+        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY)
+        ; (Dir = oeste, PX > 1, NX is PX - 1, NY is PY)
+    ),
+    % Célula deve ser Desconhecida (não visitada E sem certeza)
+    \+ visitado(NX, NY),
+    \+ certeza(NX, NY), 
+    !.
+
+# %Acao virar_direita
+
+# %executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
+# %executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
+# %executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
+# %executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
+
+# %Seguro
+
+# seguro(X,Y) :- visitado(X,Y), !.
+# seguro(X,Y) :- 
+# 	\+ memory(X, Y, [brisa]),
+# 	\+ memory(X, Y, [palmas]), 
+# 	\+ memory(X, Y, [passos]), !.
 
 
-%Desconhecido
+# %Desconhecido
 
-desconhecido(X,Y) :- 
-	\+ visitado(X,Y), 
-	\+ certeza(X,Y).
+# desconhecido(X,Y) :- 
+# 	\+ visitado(X,Y), 
+# 	\+ certeza(X,Y).
 
-%Frente
+# %Frente
 
-frente(X,Y,norte, X, Y2) :- map_size(_,MaxY), Y2 is Y + 1, Y2 =< MaxY.
-frente(X,Y,sul,   X, Y2) :- Y2 is Y - 1, Y2 >= 1.
-frente(X,Y,leste, X2, Y) :- map_size(MaxX,_), X2 is X + 1, X2 =< MaxX.
-frente(X,Y,oeste, X2, Y) :- X2 is X - 1, X2 >= 1.
+# frente(X,Y,norte, X, Y2) :- map_size(_,MaxY), Y2 is Y + 1, Y2 =< MaxY.
+# frente(X,Y,sul,   X, Y2) :- Y2 is Y - 1, Y2 >= 1.
+# frente(X,Y,leste, X2, Y) :- map_size(MaxX,_), X2 is X + 1, X2 =< MaxX.
+# frente(X,Y,oeste, X2, Y) :- X2 is X - 1, X2 >= 1.
 
-%Acao pegar (maior prioridade)
+# %Acao pegar (maior prioridade)
 
-executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'O'), !.
-executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'U'), !.
+# executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'O'), !.
+# executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'U'), !.
 
-%Acao andar
+# %Acao andar
 
-executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), seguro(XX, YY), !.
-executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), desconhecido(XX, YY), !.
+# executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), seguro(XX, YY), !.
+# executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), desconhecido(XX, YY), !.
 
-%Acao virar_esquerda
+# %Acao virar_esquerda
 
-%Viro a esquerda quando:
-%No leste tem um obstaculo
-%No oeste tem um obstaculo
-%No norte tem um obstaculo
-%No sul tem um obstaculo
-%Quando tem uma parede na minha frente
+# %Viro a esquerda quando:
+# %No leste tem um obstaculo
+# %No oeste tem um obstaculo
+# %No norte tem um obstaculo
+# %No sul tem um obstaculo
+# %Quando tem uma parede na minha frente
 
-executa_acao(virar_esquerda) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
-executa_acao(virar_esquerda) :- posicao(X, Y, Dir), \+ frente(X, Y, Dir, _, _), !.
+# executa_acao(virar_esquerda) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
+# executa_acao(virar_esquerda) :- posicao(X, Y, Dir), \+ frente(X, Y, Dir, _, _), !.
 
-%Acao virar_direita
+# %Acao virar_direita
 
-%Viro a direita quando:
-%No leste tem um obstaculo
-%No oeste tem um obstaculo
-%No norte tem um obstaculo
-%No sul tem um obstaculo
-%Quando tem uma parede na minha frente
+# %Viro a direita quando:
+# %No leste tem um obstaculo
+# %No oeste tem um obstaculo
+# %No norte tem um obstaculo
+# %No sul tem um obstaculo
+# %Quando tem uma parede na minha frente
 
-executa_acao(virar_direita) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
-executa_acao(virar_direita) :- posicao(X, Y, Dir), \ + frente(X, Y, Dir, _, _), !.
+# executa_acao(virar_direita) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
+# executa_acao(virar_direita) :- posicao(X, Y, Dir), \ + frente(X, Y, Dir, _, _), !.
 
 
 
