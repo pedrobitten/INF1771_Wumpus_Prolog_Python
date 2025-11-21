@@ -256,13 +256,80 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 %Se já visitei, e sobrevivi, é seguro.
 seguro(X,Y) :- visitado(X,Y), !.
 
-% Se tenho certeza sobre ela E a memória não registra perigos mortais/teletransportes.
+% Se tenho certeza sobre ela e a memória não registra perigos mortais/teletransportes.
 seguro(X,Y) :- certeza(X,Y), memory(X, Y, L),
 				\+ member(brisa, L),    % não é poço
     			\+ member(palmas, L),   % não é teletransporte
-			    % Se você não implementou um mecanismo de ataque, é mais seguro evitar 'passos' também.
-    			\+ member(passos, L),   % NÃO é Monstro (Risco de dano)
+    			\+ member(passos, L),   % não é monstro (Risco de dano)
     			!.
+
+% Verifica se está dentro dos limites do mapa
+within_bounds(X, Y) :-
+    map_size(MaxX, MaxY),
+    X >= 1, X =< MaxX,
+    Y >= 1, Y =< MaxY.
+
+% Calcula coordenada à frente baseada na direção
+frente(X, Y, norte, X, NY) :- NY is Y + 1.
+frente(X, Y, sul, X, NY) :- NY is Y - 1.
+frente(X, Y, leste, NX, Y) :- NX is X + 1.
+frente(X, Y, oeste, NX, Y) :- NX is X - 1.
+
+% Verifica se existe alguma direção segura para explorar a partir de uma posição
+tem_direcao_segura(PX, PY) :-
+    frente(PX, PY, norte, NX, NY), 
+    within_bounds(NX, NY), 
+    seguro(NX, NY), 
+    \+ visitado(NX, NY).
+
+tem_direcao_segura(PX, PY) :-
+    frente(PX, PY, sul, NX, NY), 
+    within_bounds(NX, NY), 
+    seguro(NX, NY), 
+    \+ visitado(NX, NY).
+
+tem_direcao_segura(PX, PY) :-
+    frente(PX, PY, leste, NX, NY), 
+    within_bounds(NX, NY), 
+    seguro(NX, NY), 
+    \+ visitado(NX, NY).
+
+tem_direcao_segura(PX, PY) :-
+    frente(PX, PY, oeste, NX, NY), 
+    within_bounds(NX, NY), 
+    seguro(NX, NY), 
+    \+ visitado(NX, NY).
+
+% Calcula a direção para chegar na sala alvo
+calcular_direcao_para_sala(PX, PY, NX, NY, oeste) :- PX > NX, !.
+calcular_direcao_para_sala(PX, PY, NX, NY, leste) :- PX < NX, !.
+calcular_direcao_para_sala(PX, PY, NX, NY, sul) :- PY > NY, !.
+calcular_direcao_para_sala(PX, PY, NX, NY, norte) :- PY < NY, !.
+
+% Encontra uma sala visitada que tenha saídas não exploradas
+encontrar_sala_backtrack(PX, PY, NX, NY, Direcao) :-
+    visitado(NX, NY),
+    seguro(NX, NY),
+    tem_direcao_segura(NX, NY),  % Sala alvo tem saídas não exploradas
+    (NX \= PX ; NY \= PY),  % Não é a sala atual
+    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
+
+
+% Vira e/ou anda na direção da sala alvo
+direcionar_para_sala(DirecaoDesejada) :-
+    posicao(PX, PY, DirecaoAtual),
+    (DirecaoAtual == DirecaoDesejada -> 
+        andar  % Se já está na direção certa, anda
+    ;
+        virar_para_direcao(DirecaoDesejada)
+    ).
+
+% Vira até ficar na direção desejada (já existente)
+virar_para_direcao(DirecaoDesejada) :-
+    posicao(_, _, DirecaoAtual),
+    (DirecaoAtual == DirecaoDesejada -> true ;
+        (virar_direita, virar_para_direcao(DirecaoDesejada))
+    ).
 
 %Acao pegar
 executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(brilho, L), !.
@@ -274,123 +341,21 @@ executa_acao(andar) :- posicao(PX, PY, sul), PY > 1, NX is PX, NY is PY - 1, seg
 executa_acao(andar) :- posicao(PX, PY, leste), map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
 executa_acao(andar) :- posicao(PX, PY, oeste), PX > 1, NX is PX - 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
 
-% Acao virar_direita (3a Prioridade A: ROTAÇÃO UNIVERSAL - Anti-Loop)
-executa_acao(virar_direita) :- 
-    posicao(PX, PY, Dir),
-    % Simula a próxima coordenada (NX, NY)
-    (
-        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1)
-        ; (Dir = sul, PY > 1, NX is PX, NY is PY - 1)
-        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY)
-        ; (Dir = oeste, PX > 1, NX is PX - 1, NY is PY)
-    ), 
-    (
-        % Causa 1: INSEGURO
-        \+ seguro(NX, NY)
-        ;
-        % Causa 2: SEGURO, MAS VISITADO (FORÇA ROTAÇÃO para procurar novo caminho)
-        (seguro(NX, NY), visitado(NX, NY))
-    ),
+executa_acao(andar) :-
+    posicao(PX, PY, _),
+    \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
+    encontrar_sala_backtrack(PX, PY, NX, NY, Direcao),
+    direcionar_para_sala(Direcao),
     !.
 
-% Acao virar_direita (3a Prioridade B: Reorientação - Parede)
-executa_acao(virar_direita) :- 
-    posicao(PX, PY, Dir),
-    % Causa 3: PAREDE (Simulação de movimento falha)
-    \+ (
-        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, _NX is PX, _NY is PY + 1)
-        ; (Dir = sul, PY > 1, _NX is PX, _NY is PY - 1)
-        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, _NX is PX + 1, _NY is PY)
-        ; (Dir = oeste, PX > 1, _NX is PX - 1, _NY is PY)
-    ),
+executa_acao(virar_direita) :-
+    posicao(X, Y, Dir),
+    frente(X, Y, Dir, NX, NY),
+    (\+ within_bounds(NX, NY) ; \+ seguro(NX, NY) ; visitado(NX, NY)),
     !.
 
-% Acao andar para VISITADO E SEGURO (4a Prioridade: Backtracking)
-executa_acao(andar) :- posicao(PX, PY, norte), map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1, seguro(NX, NY), visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, sul), PY > 1, NX is PX, NY is PY - 1, seguro(NX, NY), visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, leste), map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY, seguro(NX, NY), visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, oeste), PX > 1, NX is PX - 1, NY is PY, seguro(NX, NY), visitado(NX, NY), !.
-
-% Acao andar para DESCONHECIDO (5a Prioridade: Exploração Arriscada)
-executa_acao(andar) :- 
-    posicao(PX, PY, Dir),
-    (
-        (Dir = norte, map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1)
-        ; (Dir = sul, PY > 1, NX is PX, NY is PY - 1)
-        ; (Dir = leste, map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY)
-        ; (Dir = oeste, PX > 1, NX is PX - 1, NY is PY)
-    ),
-    % Célula deve ser Desconhecida (não visitada E sem certeza)
-    \+ visitado(NX, NY),
-    \+ certeza(NX, NY), 
+executa_acao(virar_esquerda) :-
+    posicao(X, Y, Dir),
+    frente(X, Y, Dir, NX, NY),
+    (\+ within_bounds(NX, NY) ; \+ seguro(NX, NY) ; visitado(NX, NY)),
     !.
-
-# %Acao virar_direita
-
-# %executa_acao(virar_direita) :- posicao(PX, PY, norte), !.
-# %executa_acao(virar_direita) :- posicao(PX, PY, leste), !.
-# %executa_acao(virar_direita) :- posicao(PX, PY, sul), !.
-# %executa_acao(virar_direita) :- posicao(PX, PY, oeste), !.
-
-# %Seguro
-
-# seguro(X,Y) :- visitado(X,Y), !.
-# seguro(X,Y) :- 
-# 	\+ memory(X, Y, [brisa]),
-# 	\+ memory(X, Y, [palmas]), 
-# 	\+ memory(X, Y, [passos]), !.
-
-
-# %Desconhecido
-
-# desconhecido(X,Y) :- 
-# 	\+ visitado(X,Y), 
-# 	\+ certeza(X,Y).
-
-# %Frente
-
-# frente(X,Y,norte, X, Y2) :- map_size(_,MaxY), Y2 is Y + 1, Y2 =< MaxY.
-# frente(X,Y,sul,   X, Y2) :- Y2 is Y - 1, Y2 >= 1.
-# frente(X,Y,leste, X2, Y) :- map_size(MaxX,_), X2 is X + 1, X2 =< MaxX.
-# frente(X,Y,oeste, X2, Y) :- X2 is X - 1, X2 >= 1.
-
-# %Acao pegar (maior prioridade)
-
-# executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'O'), !.
-# executa_acao(pegar) :- posicao(X, Y, _), tile(X, Y, 'U'), !.
-
-# %Acao andar
-
-# executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), seguro(XX, YY), !.
-# executa_acao(andar) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), desconhecido(XX, YY), !.
-
-# %Acao virar_esquerda
-
-# %Viro a esquerda quando:
-# %No leste tem um obstaculo
-# %No oeste tem um obstaculo
-# %No norte tem um obstaculo
-# %No sul tem um obstaculo
-# %Quando tem uma parede na minha frente
-
-# executa_acao(virar_esquerda) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
-# executa_acao(virar_esquerda) :- posicao(X, Y, Dir), \+ frente(X, Y, Dir, _, _), !.
-
-# %Acao virar_direita
-
-# %Viro a direita quando:
-# %No leste tem um obstaculo
-# %No oeste tem um obstaculo
-# %No norte tem um obstaculo
-# %No sul tem um obstaculo
-# %Quando tem uma parede na minha frente
-
-# executa_acao(virar_direita) :- posicao(X, Y, Dir), frente(X, Y, Dir, XX, YY), certeza(XX,YY), !.
-# executa_acao(virar_direita) :- posicao(X, Y, Dir), \ + frente(X, Y, Dir, _, _), !.
-
-
-
-
-
-
-
