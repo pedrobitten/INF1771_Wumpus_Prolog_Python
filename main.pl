@@ -6,6 +6,7 @@
 :-dynamic energia/1.
 :-dynamic pontuacao/1.
 
+
 :-consult('mapa.pl').
 
 delete([], _, []).
@@ -240,18 +241,10 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 
 
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Regras jogo
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%apagar esta linha - apenas para demonstracao aleatoria
-%executa_acao(X) :- L=['virar_esquerda','virar_direita','andar','pegar'],random_between(1,4,I), nth1(I, L, X),!.
-
-%Exemplos de resposta (manter para ter uma base inicial)
-%executa_acao(andar) :- posicao(PX, _, oeste), PX > 1, X = andar,!.
-%executa_acao(andar) :- posicao(PX, _, leste), PX < 3, X = andar,!.
-%executa_acao(pegar) :- posicao(PX, PY,_), tem_ouro(PX, PY), !.
-%executa_acao(voltar) :- peguei_todos_ouros,!.
 
 %Se já visitei, e sobrevivi, é seguro.
 seguro(X,Y) :- visitado(X,Y), !.
@@ -262,6 +255,9 @@ seguro(X,Y) :- certeza(X,Y), memory(X, Y, L),
     			\+ member(palmas, L),   % não é teletransporte
     			\+ member(passos, L),   % não é monstro (Risco de dano)
     			!.
+
+perigo_conhecido(X, Y, brisa) :- certeza(X,Y), memory(X, Y, L), member(brisa, L), !.
+perigo_conhecido(X, Y, passos) :- certeza(X,Y), memory(X, Y, L), member(passos, L), !.
 
 % Verifica se está dentro dos limites do mapa
 within_bounds(X, Y) :-
@@ -314,6 +310,30 @@ encontrar_sala_backtrack(PX, PY, NX, NY, Direcao) :-
     (NX \= PX ; NY \= PY),  % Não é a sala atual
     calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
 
+% 1. EVITA APENAS POÇOS (morte certa)
+%encontrar_sala_backtrack_evita_apenas_pocos(PX, PY, NX, NY, Direcao) :-
+%    visitado(NX, NY),
+%    seguro(NX, NY),
+%    \+ perigo_conhecido(NX, NY, brisa),  % ← APENAS poços
+%    (NX \= PX ; NY \= PY),
+%    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
+
+% 2. ACEITA MONSTROS se tiver energia suficiente
+%encontrar_sala_backtrack_aceita_monstros(PX, PY, NX, NY, Direcao) :-
+%    visitado(NX, NY),
+%    seguro(NX, NY),
+%    \+ perigo_conhecido(NX, NY, passos),  % Ainda evita poços
+%    energia(E), E > 60,                  % Só aceita monstros se tiver energia
+%    (NX \= PX ; NY \= PY),
+%    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
+
+% 3. ACEITA TUDO (último último recurso)
+encontrar_sala_backtrack_qualquer(PX, PY, NX, NY, Direcao) :-
+    visitado(NX, NY),
+    seguro(NX, NY),
+    (NX \= PX ; NY \= PY),       % Não é a sala atual
+    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
+
 
 % Vira e/ou anda na direção da sala alvo
 direcionar_para_sala(DirecaoDesejada) :-
@@ -348,6 +368,28 @@ executa_acao(andar) :-
     direcionar_para_sala(Direcao),
     !.
 
+%executa_acao(andar) :-
+ %   posicao(PX, PY, _),
+ %   \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
+%    encontrar_sala_backtrack_evita_apenas_pocos(PX, PY, NX, NY, Direcao),
+%    direcionar_para_sala(Direcao),
+%    !.
+
+%executa_acao(andar) :-
+%    posicao(PX, PY, _),
+%    \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
+%    encontrar_sala_backtrack_aceita_monstros(PX, PY, NX, NY, Direcao),
+%    direcionar_para_sala(Direcao),
+%    !.
+
+
+executa_acao(andar) :-
+    posicao(PX, PY, _),
+    \+ tem_direcao_segura(PX, PY), 
+    encontrar_sala_backtrack_qualquer(PX, PY, NX, NY, Direcao),
+    direcionar_para_sala(Direcao),
+    !.
+
 executa_acao(virar_direita) :-
     posicao(X, Y, Dir),
     frente(X, Y, Dir, NX, NY),
@@ -359,3 +401,11 @@ executa_acao(virar_esquerda) :-
     frente(X, Y, Dir, NX, NY),
     (\+ within_bounds(NX, NY) ; \+ seguro(NX, NY) ; visitado(NX, NY)),
     !.
+
+%caso não tenha outra opção, anda mesmo sem segurança
+%executa_acao(andar) :- 
+%    posicao(PX, PY, Dir),
+%    encontrar_sala_backtrack(PX, PY, NX, NY, Direcao),
+%    direcionar_para_sala(Direcao),
+%    \+ certeza(NX, NY),
+%    !.
