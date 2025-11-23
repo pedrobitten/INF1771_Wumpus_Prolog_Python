@@ -5,9 +5,9 @@
 :-dynamic certeza/2.
 :-dynamic energia/1.
 :-dynamic pontuacao/1.
+:-dynamic qtd_ouros/1.
 
-
-:-consult('mapa.pl').
+:-consult('mapa-facil.pl').
 
 delete([], _, []).
 delete([Elem|Tail], Del, Result) :-
@@ -27,7 +27,8 @@ reset_game :- retractall(memory(_,_,_)),
 			retractall(posicao(_,_,_)),
 			assert(energia(100)),
 			assert(pontuacao(0)),
-			assert(posicao(1,1, norte)).
+			assert(posicao(1,1, norte)),
+			assert(qtd_ouros(0)).
 
 
 :-reset_game.
@@ -240,172 +241,58 @@ show_mem(X,Y) :- Y >= 1, map_size(X,_),YY is Y - 1, write(Y), nl, show_mem(1, YY
 show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: '), write(P),!.
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+frente(PX, PY) :-
+    posicao(X, Y, Dir),
+    (
+        Dir = norte, PY is Y + 1, PX is X;
+        Dir = sul,   PY is Y - 1, PX is X;
+        Dir = leste, PX is X + 1, PY is Y;
+        Dir = oeste, PX is X - 1, PY is Y
+    ).
+
+guarda_informacao_a_frente(O) :-
+    frente(X, Y),
+    (memory(X, Y, O) -> true ; O = []).
+
+apresenta_perigo(O) :-
+    (member('brisa', O);
+    member('passos', O);
+    member('palmas', O)).
+
+adjacente_seguro_e_nao_visitado :-
+    adjacente(X, Y),
+    \+ visitado(X, Y),
+	memory(X, Y, O),
+	\+ apresenta_perigo(O), !.
+
+
+borda_do_mapa :-
+    posicao(X, Y, Dir),
+    map_size(MAX_X, MAX_Y),
+    (
+        (Dir = norte, Y >= MAX_Y);
+        (Dir = sul,   Y =< 1);
+        (Dir = leste, X >= MAX_X);
+        (Dir = oeste, X =< 1)
+    ).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Regras jogo
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%Se já visitei, e sobrevivi, é seguro.
-seguro(X,Y) :- visitado(X,Y), !.
-
-% Se tenho certeza sobre ela e a memória não registra perigos mortais/teletransportes.
-seguro(X,Y) :- certeza(X,Y), memory(X, Y, L),
-				\+ member(brisa, L),    % não é poço
-    			\+ member(palmas, L),   % não é teletransporte
-    			\+ member(passos, L),   % não é monstro (Risco de dano)
-    			!.
-
-perigo_conhecido(X, Y, brisa) :- certeza(X,Y), memory(X, Y, L), member(brisa, L), !.
-perigo_conhecido(X, Y, passos) :- certeza(X,Y), memory(X, Y, L), member(passos, L), !.
-
-% Verifica se está dentro dos limites do mapa
-within_bounds(X, Y) :-
-    map_size(MaxX, MaxY),
-    X >= 1, X =< MaxX,
-    Y >= 1, Y =< MaxY.
-
-% Calcula coordenada à frente baseada na direção
-frente(X, Y, norte, X, NY) :- NY is Y + 1.
-frente(X, Y, sul, X, NY) :- NY is Y - 1.
-frente(X, Y, leste, NX, Y) :- NX is X + 1.
-frente(X, Y, oeste, NX, Y) :- NX is X - 1.
-
-% Verifica se existe alguma direção segura para explorar a partir de uma posição
-tem_direcao_segura(PX, PY) :-
-    frente(PX, PY, norte, NX, NY), 
-    within_bounds(NX, NY), 
-    seguro(NX, NY), 
-    \+ visitado(NX, NY).
-
-tem_direcao_segura(PX, PY) :-
-    frente(PX, PY, sul, NX, NY), 
-    within_bounds(NX, NY), 
-    seguro(NX, NY), 
-    \+ visitado(NX, NY).
-
-tem_direcao_segura(PX, PY) :-
-    frente(PX, PY, leste, NX, NY), 
-    within_bounds(NX, NY), 
-    seguro(NX, NY), 
-    \+ visitado(NX, NY).
-
-tem_direcao_segura(PX, PY) :-
-    frente(PX, PY, oeste, NX, NY), 
-    within_bounds(NX, NY), 
-    seguro(NX, NY), 
-    \+ visitado(NX, NY).
-
-% Calcula a direção para chegar na sala alvo
-calcular_direcao_para_sala(PX, PY, NX, NY, oeste) :- PX > NX, !.
-calcular_direcao_para_sala(PX, PY, NX, NY, leste) :- PX < NX, !.
-calcular_direcao_para_sala(PX, PY, NX, NY, sul) :- PY > NY, !.
-calcular_direcao_para_sala(PX, PY, NX, NY, norte) :- PY < NY, !.
-
-% Encontra uma sala visitada que tenha saídas não exploradas
-encontrar_sala_backtrack(PX, PY, NX, NY, Direcao) :-
-    visitado(NX, NY),
-    seguro(NX, NY),
-    tem_direcao_segura(NX, NY),  % Sala alvo tem saídas não exploradas
-    (NX \= PX ; NY \= PY),  % Não é a sala atual
-    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
-
-% 1. EVITA APENAS POÇOS (morte certa)
-%encontrar_sala_backtrack_evita_apenas_pocos(PX, PY, NX, NY, Direcao) :-
-%    visitado(NX, NY),
-%    seguro(NX, NY),
-%    \+ perigo_conhecido(NX, NY, brisa),  % ← APENAS poços
-%    (NX \= PX ; NY \= PY),
-%    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
-
-% 2. ACEITA MONSTROS se tiver energia suficiente
-%encontrar_sala_backtrack_aceita_monstros(PX, PY, NX, NY, Direcao) :-
-%    visitado(NX, NY),
-%    seguro(NX, NY),
-%    \+ perigo_conhecido(NX, NY, passos),  % Ainda evita poços
-%    energia(E), E > 60,                  % Só aceita monstros se tiver energia
-%    (NX \= PX ; NY \= PY),
-%    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
-
-% 3. ACEITA TUDO (último último recurso)
-encontrar_sala_backtrack_qualquer(PX, PY, NX, NY, Direcao) :-
-    visitado(NX, NY),
-    seguro(NX, NY),
-    (NX \= PX ; NY \= PY),       % Não é a sala atual
-    calcular_direcao_para_sala(PX, PY, NX, NY, Direcao).
-
-
-% Vira e/ou anda na direção da sala alvo
-direcionar_para_sala(DirecaoDesejada) :-
-    posicao(PX, PY, DirecaoAtual),
-    (DirecaoAtual == DirecaoDesejada -> 
-        andar  % Se já está na direção certa, anda
-    ;
-        virar_para_direcao(DirecaoDesejada)
-    ).
-
-% Vira até ficar na direção desejada (já existente)
-virar_para_direcao(DirecaoDesejada) :-
-    posicao(_, _, DirecaoAtual),
-    (DirecaoAtual == DirecaoDesejada -> true ;
-        (virar_direita, virar_para_direcao(DirecaoDesejada))
-    ).
-
-%Acao pegar
-executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(brilho, L), !.
-executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(reflexo, L), energia(E), E <= 50, !.
-
-% Acao andar para novo e seguro
-executa_acao(andar) :- posicao(PX, PY, norte), map_size(_, MAX_Y), PY < MAX_Y, NX is PX, NY is PY + 1, seguro(NX, NY), \+ visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, sul), PY > 1, NX is PX, NY is PY - 1, seguro(NX, NY), \+ visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, leste), map_size(MAX_X, _), PX < MAX_X, NX is PX + 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
-executa_acao(andar) :- posicao(PX, PY, oeste), PX > 1, NX is PX - 1, NY is PY, seguro(NX, NY), \+ visitado(NX, NY), !.
-
-executa_acao(andar) :-
-    posicao(PX, PY, _),
-    \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
-    encontrar_sala_backtrack(PX, PY, NX, NY, Direcao),
-    direcionar_para_sala(Direcao),
-    !.
-
-%executa_acao(andar) :-
- %   posicao(PX, PY, _),
- %   \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
-%    encontrar_sala_backtrack_evita_apenas_pocos(PX, PY, NX, NY, Direcao),
-%    direcionar_para_sala(Direcao),
-%    !.
-
-%executa_acao(andar) :-
-%    posicao(PX, PY, _),
-%    \+ tem_direcao_segura(PX, PY),  % Preso na posição atual
-%    encontrar_sala_backtrack_aceita_monstros(PX, PY, NX, NY, Direcao),
-%    direcionar_para_sala(Direcao),
-%    !.
-
-
-executa_acao(andar) :-
-    posicao(PX, PY, _),
-    \+ tem_direcao_segura(PX, PY), 
-    encontrar_sala_backtrack_qualquer(PX, PY, NX, NY, Direcao),
-    direcionar_para_sala(Direcao),
-    !.
+executa_acao(voltar) :- qtd_ouros(N), N == 3.
+executa_acao(pegar) :-
+	posicao(X, Y, _),
+	memory(X, Y, O),
+	member(brilho, O),
+	qtd_ouros(N), retract(qtd_ouros(N)), N1 is N + 1, assert(qtd_ouros(N1)), !.
 
 executa_acao(virar_direita) :-
-    posicao(X, Y, Dir),
-    frente(X, Y, Dir, NX, NY),
-    (\+ within_bounds(NX, NY) ; \+ seguro(NX, NY) ; visitado(NX, NY)),
-    !.
-
-executa_acao(virar_esquerda) :-
-    posicao(X, Y, Dir),
-    frente(X, Y, Dir, NX, NY),
-    (\+ within_bounds(NX, NY) ; \+ seguro(NX, NY) ; visitado(NX, NY)),
-    !.
-
-%caso não tenha outra opção, anda mesmo sem segurança
-%executa_acao(andar) :- 
-%    posicao(PX, PY, Dir),
-%    encontrar_sala_backtrack(PX, PY, NX, NY, Direcao),
-%    direcionar_para_sala(Direcao),
-%    \+ certeza(NX, NY),
-%    !.
+	borda_do_mapa;
+	(guarda_informacao_a_frente(Obs), apresenta_perigo(Obs));
+	(
+		adjacente_seguro_e_nao_visitado,
+		frente(X, Y), visitado(X, Y)
+	).
+executa_acao(andar).
