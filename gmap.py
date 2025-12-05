@@ -2,6 +2,8 @@
 import pygame
 import sys, time, random
 from pyswip import Prolog, Functor, Variable, Query
+from queue import PriorityQueue
+from TreeNode import TreeNode
 
 import pathlib
 current_path = str(pathlib.Path().resolve())
@@ -44,13 +46,126 @@ prolog.consult(pl_file)
 
 last_action = ""
 
+def manhattan_distance(_from, to):
+    return abs(to[0] - _from[0]) + abs(to[1] - _from[1])
+
+
+def get_neighborhood(mapa, coord):
+    x, y = coord
+    vizinhos = []
+    
+    # Define os 4 movimentos possíveis (norte, sul, leste, oeste)
+    movimentos = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    
+    for dx, dy in movimentos:
+        nx, ny = x + dx, y + dy
+        
+        if 1 <= nx <= 12 and 1 <= ny <= 12:
+            if is_safe(mapa, nx, ny):
+                vizinhos.append((nx, ny))
+    
+    return vizinhos
+
+
+def is_safe(mapa, x, y):
+    py_x = x - 1
+    py_y = 12 - y  
+    
+    # Verifica se a posição existe no mapa
+    if 0 <= py_x < 12 and 0 <= py_y < 12:
+        cell_content = mapa[py_y][py_x]
+        if cell_content in ['P', 'D', 'd', 'T']:
+            return False
+        
+        return True
+    
+    return False
+
+def busca_a_estrela(mapa, origem, destino):
+    cost = 0
+    num_iter = 0
+    fronteira = PriorityQueue()
+    start_node = TreeNode(origem, manhattan_distance(origem, destino), 0)
+    fronteira.put(start_node)
+    visitados = {}
+
+    while not fronteira.empty():
+        num_iter += 1
+        curr_node = fronteira.get()
+        curr_coord = curr_node.get_coord()
+        curr_dist_g = curr_node.get_value_gx()
+
+        if curr_coord == destino:
+            cost = curr_dist_g
+            path = []
+            node = curr_node
+            while node:
+                path.append(node.get_coord())
+                node = node.get_parent()
+            path.reverse()
+            return cost, path
+
+        if curr_coord in visitados and visitados[curr_coord] <= curr_dist_g:
+            continue
+
+        visitados[curr_coord] = curr_dist_g
+
+        for coord_vizinho in get_neighborhood(mapa, curr_coord):
+            novo_dist_g = curr_dist_g + 1
+            if coord_vizinho not in visitados or novo_dist_g < visitados[coord_vizinho]:
+                no_vizinho = TreeNode(coord_vizinho, novo_dist_g + manhattan_distance(coord_vizinho, destino), novo_dist_g)
+                no_vizinho.set_parent(curr_node)
+                fronteira.put(no_vizinho)
+
+    return []
+
+
+def calcular_acao_para_posicao(pos_atual, proxima_pos):
+    x_atual, y_atual, dir_atual = pos_atual
+    x_prox, y_prox = proxima_pos
+    
+    # Calcula diferença
+    dx = x_prox - x_atual
+    dy = y_prox - y_atual
+    
+    if dx == 1:  
+        direcao_desejada = 'leste'
+    elif dx == -1: 
+        direcao_desejada = 'oeste'
+    elif dy == 1:  
+        direcao_desejada = 'norte'
+    elif dy == -1:  
+        direcao_desejada = 'sul'
+    
+    if dir_atual == direcao_desejada:
+        return "andar"
+    else:
+        return "virar_direita" 
+
 def decisao():
 
     acao = ""    
     
     acoes = list(prolog.query("executa_acao(X)"))
-    if len(acoes) > 0:
-        acao = acoes[0]['X']
+    acao = acoes[0]['X']
+    if acao ==  'voltar':
+        origem = (player_pos[0], player_pos[1])
+        destino = (1, 1)  # Saída do labirinto
+        
+        resultado = busca_a_estrela(mapa, origem, destino)
+        
+        if resultado and len(resultado) > 0:
+            if isinstance(resultado, tuple) and len(resultado) == 2:
+                caminho = resultado[1]  # (custo, caminho)
+            else:
+                caminho = resultado 
+            if len(caminho) > 1: 
+                proxima_pos = caminho[1]
+                
+                # Calcula ação necessária
+                acao_real = calcular_acao_para_posicao(player_pos, proxima_pos)
+                if acao_real:
+                    return acao_real
 
     return acao
 

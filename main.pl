@@ -357,6 +357,8 @@ virar_para_direcao(DirecaoDesejada) :-
 %% Ações
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+executa_acao(voltar) :- qtd_ouros(N), N == 3.
+
 %Acao pegar
 executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(brilho, L), !.
 executa_acao(pegar) :- posicao(X, Y, _), memory(X, Y, L), member(reflexo, L), energia(E), E <= 50, !.
